@@ -24,22 +24,38 @@ def replay():
 
     data=request.json
 
-    message=data.get("message")
-    data=data.get("ID")
-    print(data['Goals'])
+    message = data.get("message")
+    data = data.get("ID")
+
+    goals = data.get("Goals", "")
+    style = data.get("style", "")
+    type_of_model = data.get("type", "")
+
+# Build dynamic system prompt
+    system_prompt = f"""
+You are an AI model called AImate.
+- Model Type: {type_of_model}
+- Style: {style}
+- Goals: {goals}
+
+Stay consistent with this role while chatting. 
+Be friendly, supportive, and context-aware.
+"""
 
     response = client.chat.completions.create(
-        model="gpt-4.1-mini",
-        messages=[
-            {"role": "system", "content": "You are a helpful assistant."},
-            {"role": "user", "content": message}
-        ],
-        max_tokens=200
-    )
-    answer=response.choices[0].message.content
+    model="gpt-4.1-mini",
+    messages=[
+        {"role": "system", "content": system_prompt.strip()},
+        {"role": "user", "content": message}
+    ],
+    max_tokens=200
+)
+
+    ai_message = response.choices[0].message.content
+
     return jsonify({
         "id":1234567,
-        "message":answer
+        "message":ai_message
     })
 
 
