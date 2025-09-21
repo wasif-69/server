@@ -16,6 +16,7 @@ load_dotenv()
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
+
 client = OpenAI(api_key=OPENAI_API_KEY)
 Audio_folder="./uploads"
 
@@ -216,6 +217,74 @@ Make sure the difficulty levels are mixed (at least 1 Easy, 2 Medium, 2 Hard).
        })
 
 
+@app.route("/community",methods=["POST"])
+def community():
+    try:
+        data=request.json
+        text=data.get("message")
 
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+        system_prompt='''
+I will give you a short description of a community or event type.
+Based on that description, generate a JSON schema of fields that should be collected for it.
+Each field should include:
+
+"name": the field name
+
+"type": data type (string, number, date, boolean, etc.)
+
+"required": true/false
+
+Example input:
+"A Model United Nations conference for students to participate in debates and discussions"
+
+Example output:
+
+{
+  "communityType": "MUN",
+  "fields": [
+    { "name": "Name", "type": "string", "required": true },
+    { "name": "Description", "type": "string", "required": true },
+    { "name": "Venue", "type": "string", "required": true },
+    { "name": "Date", "type": "date", "required": true },
+    { "name": "Price", "type": "number", "required": false },
+    { "name": "Organizer", "type": "string", "required": true }
+  ]
+}
+
+
+Please always output only JSON, with "communityType" guessed from the description, and "fields" generated accordingly.
+Also always remeber to add instagram account in every condition 
+'''
+
+        response=client.chat.completions.create(
+        model='gpt-4o-mini',
+        messages=[
+            {"role":"system","content":system_prompt},
+            {"role":"user","content":text}
+        ],
+        max_tokens=600
+    )
+        
+
+        raw_answer = response.choices[0].message.content
+        cleaned = re.sub(r"```json|```", "", raw_answer)
+        parsed = json.loads(cleaned)
+        return jsonify({
+        "status":"Succesful",
+        "message":parsed
+    })
+
+    except Exception as e:
+        return jsonify({
+            "status":"Failed",
+            "message":str(e)
+        })
+
+
+
+# if __name__ == "__main__":
+#     app.run(host="0.0.0.0", port=5000)
+
+
+if __name__=="__main__":
+    app.run(debug=True)
