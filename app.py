@@ -6,6 +6,8 @@ import os
 import json
 import re
 from dotenv import load_dotenv
+from werkzeug.utils import secure_filename
+
 
 app=Flask(__name__)
 CORS(app) 
@@ -18,7 +20,9 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 
 client = OpenAI(api_key=OPENAI_API_KEY)
-Audio_folder="./uploads"
+Audio_folder = "./uploads"
+os.makedirs(Audio_folder, exist_ok=True)
+
 
 @app.route('/chat',methods=["POST"])
 def replay():
@@ -41,6 +45,7 @@ You are an AI model called AImate.
 
 Stay consistent with this role while chatting. 
 Be friendly, supportive, and context-aware.
+Try often to use remeber user it's goal
 """
 
     response = client.chat.completions.create(
@@ -103,67 +108,89 @@ def live_chat():
     return jsonify({"message":"Done "})    
 
 
-@app.route('/upload',methods=["POST"])
+
+@app.route('/upload', methods=["POST"])
 def upload_voice():
     if "file" not in request.files:
-        return jsonify ({'Error':"There is not any file"}),400
-    
-    try:
-        files = request.files['file']
-        file_name=f'{uuid.uuid4()}.webm'
-        file_path=os.path.join(Audio_folder,file_name)
-        files.save(file_path)
+        return jsonify({'error': "No file provided"}), 400
 
-        role="bussinesman"
-        name="Steve jobs"
-        type_AI="Acts like steve jobs and personality similar to him "
-        languge="urdu"
-        with open(file_path,'rb') as audio_file:
-            transcript=client.audio.transcriptions.create(
+    try:
+        # === Save Uploaded File ===
+        file = request.files["file"]
+        filename = f"{uuid.uuid4()}.webm"
+        safe_path = os.path.join(Audio_folder, secure_filename(filename))
+        file.save(safe_path)
+
+        # === Personality ===
+        personality = request.form.get("personality", "Steve Jobs")
+        role = "businessman"
+        name = personality
+        type_ai = f"Acts like {personality} and personality similar to him"
+        language = "urdu"
+
+        # === Transcribe Audio ===
+        with open(safe_path, 'rb') as audio_file:
+            transcript = client.audio.transcriptions.create(
                 model="gpt-4o-mini-transcribe",
                 file=audio_file
             )
-        text=transcript.text
+        user_input = transcript.text
 
-        response=client.chat.completions.create(
-        model="gpt-4.1-mini",
-        messages=[
-            {"role":"system","content":f"Your role is {role} and act like {type_AI} and your name is {name} and give answer in {languge} always"},
-            {"role":"user","content":text}
-        ],
-        max_tokens=300
-    )    
-        answer=response.choices[0].message.content
+        if not user_input.strip():
+            return jsonify({'error': "Audio transcription failed or empty."}), 400
 
-    
+        # === Get AI Reply ===
+        system_prompt = (
+            f"Your role is {role}. Act like {type_ai}. "
+            f"Your name is {name}. Always respond in {language}."
+        )
 
-        final= client.audio.speech.with_raw_response.create(
-        model="gpt-4o-mini-tts",
-        voice='ash',
-        input=answer) 
+        response = client.chat.completions.create(
+            model="gpt-4.1-mini",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_input}
+            ],
+            max_tokens=300
+        )
 
-       
-        output_name = f"{uuid.uuid4()}.mp3"
-        output_path = os.path.join(Audio_folder, output_name)
-        with open(output_path, "wb") as f:
-            f.write(final.content)
+        answer = response.choices[0].message.content
+
+        # === Generate Speech ===
+        speech_response = client.audio.speech.with_raw_response.create(
+            model="gpt-4o-mini-tts",
+            voice="ash",
+            input=answer
+        )
+
+        audio_output_name = f"{uuid.uuid4()}.mp3"
+        audio_output_path = os.path.join(Audio_folder, secure_filename(audio_output_name))
+        with open(audio_output_path, "wb") as out_f:
+            out_f.write(speech_response.content)
+            
+
+        print("Saved audio file to:", audio_output_path)
+        print("Size:", os.path.getsize(audio_output_path), "bytes")
+            
+        if not os.path.exists(audio_output_path):
+            print("❌ File was not saved!")
 
         return jsonify({
-            "message":answer,
-            "filename":output_name
-        })
-    
-    except Exception as e :
-        return jsonify({
-            "error":str(e),
-            "stage":"stage_2"
+            "message": answer,
+            "filename": audio_output_name
+        }), 200
 
-            })
+    except Exception as e:
+        return jsonify({
+            "error": str(e),
+            "stage": "processing"
+        }), 500
 
 
 @app.route("/uploads/<filename>")
 def get_file(filename):
-    return send_from_directory(Audio_folder,filename)
+    return send_from_directory(Audio_folder, filename)
+
 
 @app.route("/test",methods=["POST"])
 def create_TEST():
