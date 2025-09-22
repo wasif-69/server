@@ -308,10 +308,40 @@ Also always remeber to add instagram account in every condition
         })
 
 
+@app.route("/study",methods=["POST"])
+def study():
+    data = request.get_json()
+    question = data.get("question")
 
-# if __name__ == "__main__":
-#     app.run(host="0.0.0.0", port=5000)
+    try:
+        system_prompt = f"""
+You are an intelligent AI study assistant. Explain the topic in a simple and helpful way so a student can understand. Use examples when needed.
+"""
+
+        response = client.chat.completions.create(
+    model="gpt-4.1-mini",
+    messages=[
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": question}
+    ],
+    max_tokens=200
+)
+    
+        ai_message = response.choices[0].message.content
+
+        return jsonify({
+        "message":ai_message,
+        "Status":"PASS"
+    })
+
+    except Exception as e:
+        return jsonify({
+            "message":str(e),
+            "status":"FAIL:"
+        })
 
 
-if __name__=="__main__":
-    app.run(debug=True)
+
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000)
